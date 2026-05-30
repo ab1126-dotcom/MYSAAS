@@ -9,17 +9,9 @@ export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false);
   const currentPaid = isPaidUser();
 
-  // Demo: Toggle subscription (in real app, integrate Stripe/Razorpay)
   const handleSelectPlan = (plan) => {
     if (plan === 'paid') {
-      // In real app: redirect to payment gateway (Stripe/Razorpay)
-      // For demo: directly set as paid
-      setSubscription('paid');
-      toast.success('🎉 Pro Plan Activate! (Demo Mode)', {
-        duration: 4000,
-        style: { background: '#1a1a24', color: '#fff', border: '1px solid rgba(244,63,94,0.3)' }
-      });
-      setTimeout(() => navigate('/dashboard'), 1500);
+      window.location.href = 'https://clipai-pro.lemonsqueezy.com/checkout/buy/ea447515-83e5-4fe2-9318-11cd85576dcb';
     } else {
       setSubscription('free');
       toast.success('Free Plan selected');
@@ -28,7 +20,7 @@ export default function PricingPage() {
   };
 
   const monthlyPrice = 499;
-  const yearlyPrice = Math.round(monthlyPrice * 12 * 0.6); // 40% off yearly
+  const yearlyPrice = Math.round(monthlyPrice * 12 * 0.6);
 
   const freePlan = {
     name: 'Free',
@@ -208,7 +200,7 @@ export default function PricingPage() {
             },
             {
               q: 'Payment secure hai?',
-              a: 'Bilkul! Hum Razorpay/Stripe use karte hain jo India mein sabse trusted payment gateway hai. UPI, card, net banking sab chalega.'
+              a: 'Bilkul! Hum Lemon Squeezy use karte hain jo secure international payment gateway hai. Card payments sab chalega.'
             },
             {
               q: 'YouTube API ke bina kaam karega?',
@@ -234,11 +226,10 @@ export default function PricingPage() {
         </div>
       </div>
 
-      {/* Note about demo */}
-      <div className="mt-10 glass-card p-5 border-blue-500/20 bg-blue-500/5">
-        <p className="text-blue-400/80 text-sm text-center">
-          ℹ️ <strong>Developer Note:</strong> "Get Pro Now" button demo ke liye direct activate karta hai. 
-          Real app mein <strong>Razorpay ya Stripe</strong> integration karo payment ke liye.
+      {/* Secure Payment Note */}
+      <div className="mt-10 glass-card p-5 border-green-500/20 bg-green-500/5">
+        <p className="text-green-400/80 text-sm text-center">
+          ✅ <strong>Secure Payment:</strong> "Get Pro Now" button Lemon Squeezy secure checkout pe redirect karta hai. PKR 499/month — kabhi bhi cancel kar sakte ho.
         </p>
       </div>
     </div>
