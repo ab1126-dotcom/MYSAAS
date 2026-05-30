@@ -16,7 +16,7 @@ const getUserId = () => {
 // Create axios instance with default headers
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 60000, // 60s for AI calls
+  timeout: 120000, // 120s for AI calls
   headers: {
     'Content-Type': 'application/json',
   }
