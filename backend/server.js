@@ -11,6 +11,7 @@ const commentRoutes = require('./routes/comments');
 const seoRoutes = require('./routes/seo');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // Security middleware
