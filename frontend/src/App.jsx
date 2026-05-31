@@ -4,6 +4,8 @@ import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
 import PricingPage from './pages/PricingPage';
 import CommentAnalysisPage from './pages/CommentAnalysisPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
 import Navbar from './components/Navbar';
 
 export default function App() {
@@ -14,6 +16,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+<Route path="/terms-of-service" element={<TermsOfServicePage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/comments" element={<CommentAnalysisPage />} />
         </Routes>
