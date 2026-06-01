@@ -63,9 +63,9 @@ export default function DashboardPage() {
       
     } catch (err) {
       if (err.upgradeRequired) {
-        setError({ type: 'upgrade', message: err.message });
+        setError({ type: 'upgrade', message: err.message || JSON.stringify(err) });
       } else {
-        setError({ type: 'error', message: err.message });
+       setError({ type: 'error', message: err.message || JSON.stringify(err) });
         toast.error(err.message);
       }
     } finally {
