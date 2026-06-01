@@ -86,7 +86,7 @@ const parseTime = (t) => {
       return res.status(500).json({ error: 'Video download fail hua', details: stderr });
     }
 
-   const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -c:a aac -avoid_negative_ts make_zero "${clipFile}" -y`;
+   const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -vf scale=720:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y`;
 
     exec(ffmpegCmd, { timeout: 60000 }, (err2, stdout2, stderr2) => {
       fs.unlink(rawFile, () => {});
