@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     curl \
     && pip3 install yt-dlp --break-system-packages \
+    && npm install -g n \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,5 +18,7 @@ RUN npm install
 COPY . .
 
 EXPOSE 5000
+
+CMD ["node", "server.js"]
 
 CMD ["node", "server.js"]
