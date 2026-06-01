@@ -6,7 +6,7 @@ import {
   TrendingUp, Copy, ChevronDown, ChevronUp, Tag, 
   AlertCircle, Crown, Loader2, Play, ExternalLink
 } from 'lucide-react';
-import { analyzeVideo, generateHooks, generateSEO, getUsage, isPaidUser } from '../utils/api';
+import { analyzeVideo, generateHooks, generateSEO, getUsage, isPaidUser, downloadClip } from '../utils/api';
 
 export default function DashboardPage() {
   const [searchParams] = useSearchParams();
@@ -364,6 +364,12 @@ export default function DashboardPage() {
                         >
                           {loadingSEO ? <Loader2 size={13} className="animate-spin" /> : <Tag size={13} />}
                           {seoData ? 'SEO Reload' : 'SEO Generate'}
+                        </button>
+                        <button
+                          onClick={() => downloadClip(result.videoData.url, clip.startTime, clip.endTime, clip.title)}
+                          className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
+                        >
+                          ⬇️ Download Clip
                         </button>
                         {(hooksData || seoData) && (
                           <button 
