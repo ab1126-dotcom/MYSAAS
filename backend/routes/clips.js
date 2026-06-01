@@ -111,16 +111,26 @@ router.post('/download-clip', async (req, res) => {
     const downloadUrl = mp4Format.url;
 
     // Download video file
-    await new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(rawFile);
-      https.get(downloadUrl, (response) => {
-        response.pipe(file);
+await new Promise((resolve, reject) => {
+  const file = fs.createWriteStream(rawFile);
+  const request = https.get(downloadUrl, (response) => {
+    if (response.statusCode === 302 || response.statusCode === 301) {
+      https.get(response.headers.location, (redirectResponse) => {
+        redirectResponse.pipe(file);
         file.on('finish', () => { file.close(); resolve(); });
-      }).on('error', (err) => {
-        fs.unlink(rawFile, () => {});
-        reject(err);
-      });
-    });
+        file.on('error', reject);
+      }).on('error', reject);
+    } else {
+      response.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+      file.on('error', reject);
+    }
+  });
+  request.on('error', (err) => {
+    fs.unlink(rawFile, () => {});
+    reject(err);
+  });
+});
 
     // Cut clip with FFmpeg
     const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -vf scale=720:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y`;
