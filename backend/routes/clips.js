@@ -78,7 +78,7 @@ const parseTime = (t) => {
   const safeTitle = (title || 'clip').replace(/[^a-zA-Z0-9_-]/g, '_');
   const duration = end - start;
 
-  const ytdlpCmd = `yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "${rawFile}" "${videoUrl}"`;
+ const ytdlpCmd = `yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --cookies /app/cookies.txt -o "${rawFile}" "${videoUrl}"`;
 
   exec(ytdlpCmd, { timeout: 120000 }, (err, stdout, stderr) => {
     if (err) {
