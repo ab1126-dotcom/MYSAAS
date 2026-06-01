@@ -70,5 +70,24 @@ export const setSubscription = (plan) => {
 };
 
 export const isPaidUser = () => getSubscription() === 'paid';
-
+export const downloadClip = async (videoUrl, startTime, endTime, title) => {
+  const response = await fetch(`${BASE_URL}/clips/download-clip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl, startTime, endTime, title })
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Download fail hua');
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title || 'clip'}.mp4`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
 export default api;
