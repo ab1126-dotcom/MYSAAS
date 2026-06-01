@@ -59,7 +59,15 @@ router.post('/seo', async (req, res) => {
 
 router.post('/download-clip', (req, res) => {
   const { videoUrl, startTime, endTime, title } = req.body;
-
+const parseTime = (t) => {
+    if (typeof t === 'number') return t;
+    const parts = String(t).split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return parseFloat(t) || 0;
+  };
+  const start = parseTime(startTime);
+  const end = parseTime(endTime);
   if (!videoUrl || startTime === undefined || endTime === undefined) {
     return res.status(400).json({ error: 'videoUrl, startTime, endTime required hai' });
   }
@@ -68,7 +76,7 @@ router.post('/download-clip', (req, res) => {
   const rawFile = path.join(TMP_DIR, `${id}_raw.mp4`);
   const clipFile = path.join(TMP_DIR, `${id}_clip.mp4`);
   const safeTitle = (title || 'clip').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const duration = endTime - startTime;
+  const duration = end - start;
 
   const ytdlpCmd = `yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "${rawFile}" "${videoUrl}"`;
 
@@ -78,7 +86,7 @@ router.post('/download-clip', (req, res) => {
       return res.status(500).json({ error: 'Video download fail hua', details: stderr });
     }
 
-    const ffmpegCmd = `ffmpeg -ss ${startTime} -i "${rawFile}" -t ${duration} -c:v libx264 -c:a aac -avoid_negative_ts make_zero "${clipFile}" -y`;
+   const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -c:a aac -avoid_negative_ts make_zero "${clipFile}" -y`;
 
     exec(ffmpegCmd, { timeout: 60000 }, (err2, stdout2, stderr2) => {
       fs.unlink(rawFile, () => {});
