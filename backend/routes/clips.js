@@ -1,7 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { generateHooks, generateSEO } = require('../services/aiService');
+const { exec } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 
+const TMP_DIR = '/tmp/clips';
+if (!fs.existsSync(TMP_DIR)) {
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+}
 // POST /api/clips/hooks - Generate viral hooks for a clip
 router.post('/hooks', async (req, res) => {
   try {
@@ -48,15 +56,6 @@ router.post('/seo', async (req, res) => {
   }
 });
 // POST /api/clips/download-clip - Download & cut video clip
-const { exec } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
-
-const TMP_DIR = '/tmp/clips';
-if (!fs.existsSync(TMP_DIR)) {
-  fs.mkdirSync(TMP_DIR, { recursive: true });
-}
 
 router.post('/download-clip', (req, res) => {
   const { videoUrl, startTime, endTime, title } = req.body;
