@@ -57,9 +57,9 @@ export default function CommentAnalysisPage() {
             <span className="ml-2 text-lg bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full border border-yellow-500/30">PRO</span>
           </h1>
           <p className="text-white/50 text-lg mb-6 leading-relaxed">
-            Ye feature sirf <span className="text-yellow-400 font-semibold">Pro users</span> ke liye hai.
+           This feature is only for <span className="text-yellow-400 font-semibold">Pro users</span>.
             <br />
-            100 comments analyze karke AI batayega kaunsa video next banana chahiye!
+            AI analyzes 100 comments and tells you what video to make next!
           </p>
           
           <div className="grid grid-cols-2 gap-4 mb-8 text-left">
@@ -67,9 +67,9 @@ export default function CommentAnalysisPage() {
               '100+ comments analyze',
               'Audience sentiment check',
               'Top 3 next video ideas',
-              'Comment ke patterns',
-              'Audience kya chahti hai',
-              'Content gaps find karo'
+              'Comment patterns',
+              'What your audience wants',
+              'Find content gaps'
             ].map(f => (
               <div key={f} className="flex items-center gap-2 text-white/60 text-sm">
                 <span className="text-yellow-400">✓</span>{f}
@@ -79,7 +79,7 @@ export default function CommentAnalysisPage() {
           
           <button onClick={() => navigate('/pricing')} className="btn-primary px-10 py-4 text-lg">
             <Crown size={18} className="inline mr-2" />
-            Pro Plan Upgrade Karo
+            Upgrade to Pro Plan
           </button>
         </div>
       </div>
@@ -97,12 +97,12 @@ export default function CommentAnalysisPage() {
             PRO
           </span>
         </div>
-        <p className="text-white/40">Comments analyze karo — AI batayega next viral video idea</p>
+        <p className="text-white/40">Analyze comments — AI will suggest your next viral video idea</p>
       </div>
 
       {/* Input */}
       <form onSubmit={handleAnalyze} className="glass-card p-6 mb-8">
-        <label className="block text-white/60 text-sm mb-3">YouTube Video URL (jis video ke comments analyze karne hain)</label>
+        <label className="block text-white/60 text-sm mb-3">YouTube Video URL (whose comments you want to analyze)</label>
         <div className="flex gap-3">
           <div className="flex-1 relative">
             <Play size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
@@ -123,7 +123,7 @@ export default function CommentAnalysisPage() {
         {loading && (
           <div className="mt-3 text-purple-400 text-sm flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-            100 comments padhe ja rahe hain... AI analyze kar raha hai...
+            Reading 100 comments... AI is analyzing...
           </div>
         )}
       </form>
@@ -135,8 +135,8 @@ export default function CommentAnalysisPage() {
             <Crown size={20} className="text-yellow-400" />
             <h3 className="font-bold text-yellow-300">Pro Plan Required</h3>
           </div>
-          <p className="text-yellow-400/70 text-sm mb-3">Comment analysis ke liye Pro plan chahiye</p>
-          <button onClick={() => navigate('/pricing')} className="btn-primary text-sm py-2">Upgrade Karo</button>
+          <p className="text-yellow-400/70 text-sm mb-3">Pro plan required for comment analysis</p>
+          <button onClick={() => navigate('/pricing')} className="btn-primary text-sm py-2">Upgrade Now</button>
         </div>
       )}
 
@@ -189,11 +189,11 @@ export default function CommentAnalysisPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3">
-                  <p className="text-green-400 text-xs mb-1">👍 Audience Ko Kya Pasand Aaya</p>
+                  <p className="text-green-400 text-xs mb-1">👍 What Audience Liked</p>
                   <p className="text-white/70 text-sm">{result.analysis.sentimentAnalysis.topPositiveTheme}</p>
                 </div>
                 <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3">
-                  <p className="text-red-400 text-xs mb-1">👎 Kya Improve Karna Chahiye</p>
+                  <p className="text-red-400 text-xs mb-1">👎 What To Improve</p>
                   <p className="text-white/70 text-sm">{result.analysis.sentimentAnalysis.topNegativeTheme}</p>
                 </div>
               </div>
@@ -209,7 +209,7 @@ export default function CommentAnalysisPage() {
               </h3>
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <p className="text-white/40 text-xs uppercase mb-2 tracking-wider">Audience Ki Requests</p>
+                  <p className="text-white/40 text-xs uppercase mb-2 tracking-wider">Audience Requests</p>
                   <ul className="space-y-2">
                     {result.analysis.audienceInsights.requests?.map((r, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-white/70">
@@ -303,7 +303,7 @@ export default function CommentAnalysisPage() {
               <div className="flex items-start gap-3">
                 <TrendingUp size={20} className="text-brand-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-brand-300 font-bold mb-1">🎯 Abhi Karo Ye:</p>
+                  <p className="text-brand-300 font-bold mb-1">🎯 Do This Now:</p>
                   <p className="text-white/70">{result.analysis.actionableInsight}</p>
                 </div>
               </div>
