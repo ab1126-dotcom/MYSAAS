@@ -60,9 +60,9 @@ export default function HomePage() {
   ];
 
   const testimonials = [
-    { name: 'Bhuvan Bam', handle: '@bb_ki_vines', text: 'Is tool ne meri clip 2M views tak pahunchi! AI bahut accurate hai 🔥', avatar: 'BB' },
-    { name: 'CarryMinati', handle: '@carryminati', text: 'Comment analysis feature game changer hai. Next video idea turant mil gaya!', avatar: 'CM' },
-    { name: 'MrBeast India', handle: '@mrbeastindia', text: 'Free mein 3 clips try kiye, phir turant upgrade kiya. Worth every rupee!', avatar: 'MB' },
+    { name: 'Bhuvan Bam', handle: '@bb_ki_vines', text: 'This tool helped my clip reach 2M views! The AI is incredibly accurate 🔥', avatar: 'BB' },
+    { name: 'CarryMinati', handle: '@carryminati', text: 'Comment analysis feature is a total game changer. Got my next video idea instantly!', avatar: 'CM' },
+    { name: 'MrBeast India', handle: '@mrbeastindia', text: 'Tried 3 free clips, then upgraded immediately. Worth every penny!', avatar: 'MB' },
   ];
 
   return (
@@ -84,16 +84,16 @@ export default function HomePage() {
         </div>
 
         <h1 className="text-5xl md:text-7xl font-display font-bold text-white leading-tight mb-6 fade-in-up animate-delay-100">
-          YouTube Video Se
+          Extract
           <br />
-          <span className="gradient-text">Viral Clips</span> Nikalo
+          <span className="gradient-text">Viral Clips</span> From
           <br />
-          AI Se! 🚀
+          YouTube With AI! 🚀
         </h1>
 
         <p className="text-xl text-white/50 max-w-2xl mx-auto mb-10 fade-in-up animate-delay-200 font-body">
-          Sirf link paste karo — AI tumhare best moments dhundega, viral hooks likhega, 
-          SEO optimize karega aur batayega kaunsa video banana chahiye next!
+          Just paste a link — AI will find your best moments, write viral hooks, 
+          optimize SEO and tell you what video to make next!
         </p>
 
         {/* Quick URL Input */}
@@ -104,18 +104,18 @@ export default function HomePage() {
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="YouTube link paste karo..."
+              placeholder="Paste your YouTube link here..."
               className="input-field pl-11 py-4 text-base"
             />
           </div>
           <button type="submit" className="btn-primary px-8 py-4 text-base whitespace-nowrap flex items-center gap-2">
             <Zap size={16} />
-            Analyze Karo
+            Analyze Now
           </button>
         </form>
 
         <p className="text-white/30 text-sm fade-in-up animate-delay-400">
-          ✓ Free mein 3 clips try karo — No credit card needed
+          ✓ Try 3 clips for free — No credit card needed
         </p>
 
         {/* Stats */}
@@ -133,9 +133,9 @@ export default function HomePage() {
       <section className="max-w-6xl mx-auto px-4 py-20">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-display font-bold text-white mb-4">
-            Kya Milega Tumhe? 🎯
+            What You Get 🎯
           </h2>
-          <p className="text-white/40 text-lg">Sab kuch ek jagah — viral creator banne ke liye</p>
+          <p className="text-white/40 text-lg">Everything in one place — to become a viral creator</p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -164,15 +164,15 @@ export default function HomePage() {
       {/* How it Works */}
       <section className="max-w-6xl mx-auto px-4 py-20 border-t border-white/5">
         <div className="text-center mb-14">
-          <h2 className="text-4xl font-display font-bold text-white mb-4">Kaise Kaam Karta Hai? 🤔</h2>
-          <p className="text-white/40 text-lg">Sirf 3 steps mein viral clips ready!</p>
+          <h2 className="text-4xl font-display font-bold text-white mb-4">How It Works 🤔</h2>
+          <p className="text-white/40 text-lg">Viral clips ready in just 3 steps!</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8">
           {[
-            { step: '01', title: 'Link Paste Karo', desc: 'Apna YouTube video ka link paste karo — koi bhi video, koi bhi length', icon: '🔗' },
-            { step: '02', title: 'AI Analyze Karta Hai', desc: 'Hamara AI video ko analyze karta hai aur viral moments dhundta hai', icon: '🤖' },
-            { step: '03', title: 'Clips Download Karo', desc: 'Timestamps, hooks, SEO sab kuch ready — bas clip editor mein use karo!', icon: '🎬' },
+            { step: '01', title: 'Paste Your Link', desc: 'Paste your YouTube video link — any video, any length', icon: '🔗' },
+            { step: '02', title: 'AI Analyzes It', desc: 'Our AI analyzes the video and finds the most viral moments', icon: '🤖' },
+            { step: '03', title: 'Download Your Clips', desc: 'Timestamps, hooks, SEO all ready — just use them in your clip editor!', icon: '🎬' },
           ].map((item) => (
             <div key={item.step} className="text-center">
               <div className="text-5xl mb-4">{item.icon}</div>
@@ -187,7 +187,7 @@ export default function HomePage() {
       {/* Testimonials */}
       <section className="max-w-6xl mx-auto px-4 py-20">
         <div className="text-center mb-14">
-          <h2 className="text-4xl font-display font-bold text-white mb-4">Creators Ne Kya Kaha? ⭐</h2>
+          <h2 className="text-4xl font-display font-bold text-white mb-4">What Creators Are Saying ⭐</h2>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
@@ -217,9 +217,9 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent" />
           <div className="relative">
             <h2 className="text-4xl font-display font-bold text-white mb-4">
-              Ready Ho? 🔥<br />Abhi Try Karo Free Mein!
+              Ready? 🔥<br />Try It Free Right Now!
             </h2>
-            <p className="text-white/50 text-lg mb-8">3 clips bilkul free — koi signup nahi, koi credit card nahi</p>
+            <p className="text-white/50 text-lg mb-8">3 clips completely free — no signup, no credit card</p>
             <button onClick={() => navigate('/dashboard')} className="btn-primary text-lg px-10 py-4 inline-flex items-center gap-2">
               <Zap size={18} />
               Start Analyzing
@@ -235,4 +235,5 @@ export default function HomePage() {
       </footer>
     </div>
   );
+}
 }
