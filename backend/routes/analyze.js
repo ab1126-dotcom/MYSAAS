@@ -39,10 +39,8 @@ router.post('/', checkFreeUsage, async (req, res) => {
     const clipAnalysis = await findViralClips(videoData, clipCount);
 
     // Increment usage for free users
-    incrementUsage(req);
-    
-    const usageStats = getUsageStats(req);
-
+    await incrementUsage(req);
+   const usageStats = await getUsageStats(req);
     res.json({
       success: true,
       videoData: {
@@ -81,8 +79,8 @@ router.post('/', checkFreeUsage, async (req, res) => {
 });
 
 // GET /api/analyze/usage - Check user's usage
-router.get('/usage', (req, res) => {
-  const stats = getUsageStats(req);
+router.get('/usage', async (req, res) => {
+  const stats = await getUsageStats(req);
   res.json(stats);
 });
 
