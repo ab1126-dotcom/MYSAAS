@@ -176,7 +176,7 @@ router.post('/download-clip', async (req, res) => {
     }
 
     // Cut clip with FFmpeg
-    const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -vf scale=720:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
+    const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
 
     await new Promise((resolve, reject) => {
       exec(ffmpegCmd, { timeout: 120000 }, (err, stdout, stderr) => {
