@@ -1,11 +1,17 @@
-const NodeCache = require('node-cache');
-
-// In-memory cache for tracking usage (in production use Redis/DB)
-const usageCache = new NodeCache({ stdTTL: 86400 }); // 24 hour TTL
+const { createClient } = require('redis');
 
 const FREE_CLIP_LIMIT = 3;
 
-// Get user identifier (IP based for demo, use auth token in production)
+let redisClient = null;
+
+async function getRedis() {
+  if (redisClient) return redisClient;
+  redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient.on('error', (err) => console.error('Redis error:', err));
+  await redisClient.connect();
+  return redisClient;
+}
+
 function getUserId(req) {
   return req.headers['x-user-id'] || 
          req.ip || 
@@ -13,63 +19,73 @@ function getUserId(req) {
          'anonymous';
 }
 
-// Check free tier usage
-function checkFreeUsage(req, res, next) {
+async function checkFreeUsage(req, res, next) {
   const isPaid = req.headers['x-subscription'] === 'paid' || 
                  req.body?.isPaid === true ||
                  req.query?.isPaid === 'true';
   
   req.isPaid = isPaid;
-  
-  if (isPaid) {
-    return next(); // Paid users unlimited
-  }
+  if (isPaid) return next();
 
   const userId = getUserId(req);
   const key = `usage_${userId}`;
-  const usage = usageCache.get(key) || 0;
 
-  req.currentUsage = usage;
-  req.remainingFree = Math.max(0, FREE_CLIP_LIMIT - usage);
+  try {
+    const redis = await getRedis();
+    const usage = parseInt(await redis.get(key) || '0');
+    req.currentUsage = usage;
+    req.remainingFree = Math.max(0, FREE_CLIP_LIMIT - usage);
 
-  if (usage >= FREE_CLIP_LIMIT) {
-    return res.status(403).json({
-      error: 'Free limit reached',
-      message: `Aapne apne ${FREE_CLIP_LIMIT} free clips use kar liye hain. Unlimited clips ke liye upgrade karein!`,
-      limit: FREE_CLIP_LIMIT,
-      used: usage,
-      remaining: 0,
-      upgradeRequired: true
-    });
+    if (usage >= FREE_CLIP_LIMIT) {
+      return res.status(403).json({
+        error: 'Free limit reached',
+        message: `You have used all ${FREE_CLIP_LIMIT} free clips. Upgrade for unlimited!`,
+        limit: FREE_CLIP_LIMIT,
+        used: usage,
+        remaining: 0,
+        upgradeRequired: true
+      });
+    }
+    next();
+  } catch (err) {
+    console.error('Redis checkFreeUsage error:', err.message);
+    next(); // fail open
   }
-
-  next();
 }
 
-// Increment usage after successful clip generation
-function incrementUsage(req) {
+async function incrementUsage(req) {
   if (req.isPaid) return;
-  
   const userId = getUserId(req);
   const key = `usage_${userId}`;
-  const current = usageCache.get(key) || 0;
-  usageCache.set(key, current + 1);
+  try {
+    const redis = await getRedis();
+    await redis.incr(key);
+    await redis.expire(key, 86400); // 24 hour TTL
+  } catch (err) {
+    console.error('Redis incrementUsage error:', err.message);
+  }
 }
 
-// Get usage stats for a user
-function getUsageStats(req) {
+async function getUsageStats(req) {
   const userId = getUserId(req);
   const key = `usage_${userId}`;
-  const used = usageCache.get(key) || 0;
   const isPaid = req.headers['x-subscription'] === 'paid';
   
-  return {
-    userId,
-    isPaid,
-    used,
-    limit: isPaid ? 'unlimited' : FREE_CLIP_LIMIT,
-    remaining: isPaid ? 'unlimited' : Math.max(0, FREE_CLIP_LIMIT - used)
-  };
+  try {
+    const redis = await getRedis();
+    const used = parseInt(await redis.get(key) || '0');
+    return {
+      userId,
+      isPaid,
+      used,
+      limit: isPaid ? 'unlimited' : FREE_CLIP_LIMIT,
+      remaining: isPaid ? 'unlimited' : Math.max(0, FREE_CLIP_LIMIT - used)
+    };
+  } catch (err) {
+    return { userId, isPaid, used: 0, limit: FREE_CLIP_LIMIT, remaining: FREE_CLIP_LIMIT };
+  }
 }
+
+module.exports = { checkFreeUsage, incrementUsage, getUsageStats, getUserId };
 
 module.exports = { checkFreeUsage, incrementUsage, getUsageStats, getUserId };
