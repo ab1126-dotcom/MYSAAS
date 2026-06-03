@@ -6,10 +6,54 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
+const http = require('http');
 
 const TMP_DIR = '/tmp/clips';
 if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
+}
+
+// Helper: download with full redirect support
+function downloadFile(url, destPath, maxRedirects = 10) {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects === 0) return reject(new Error('Too many redirects'));
+
+    const lib = url.startsWith('https') ? https : http;
+    const file = fs.createWriteStream(destPath);
+
+    const request = lib.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      }
+    }, (response) => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        file.close();
+        fs.unlink(destPath, () => {});
+        return downloadFile(response.headers.location, destPath, maxRedirects - 1)
+          .then(resolve).catch(reject);
+      }
+
+      if (response.statusCode !== 200) {
+        file.close();
+        fs.unlink(destPath, () => {});
+        return reject(new Error(`HTTP ${response.statusCode}`));
+      }
+
+      response.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+      file.on('error', (err) => { fs.unlink(destPath, () => {}); reject(err); });
+    });
+
+    request.on('error', (err) => {
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+
+    request.setTimeout(60000, () => {
+      request.destroy();
+      reject(new Error('Download timeout'));
+    });
+  });
 }
 
 // POST /api/clips/hooks
@@ -47,7 +91,7 @@ router.post('/download-clip', async (req, res) => {
   const { videoUrl, startTime, endTime, title } = req.body;
 
   if (!videoUrl || startTime === undefined || endTime === undefined) {
-    return res.status(400).json({ error: 'videoUrl, startTime, endTime required hai' });
+    return res.status(400).json({ error: 'videoUrl, startTime, endTime required' });
   }
 
   const parseTime = (t) => {
@@ -68,7 +112,6 @@ router.post('/download-clip', async (req, res) => {
   const safeTitle = (title || 'clip').replace(/[^a-zA-Z0-9_-]/g, '_');
 
   try {
-    // Extract video ID
     const videoIdMatch = videoUrl.match(/(?:v=|youtu\.be\/)([^&\n?#]+)/);
     if (!videoIdMatch) {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
@@ -77,7 +120,6 @@ router.post('/download-clip', async (req, res) => {
 
     // Get download URL from RapidAPI
     const rapidApiKey = process.env.RAPIDAPI_KEY;
-    const apiUrl = `https://yt-api.p.rapidapi.com/dl?id=${videoId}`;
 
     const apiResponse = await new Promise((resolve, reject) => {
       const options = {
@@ -92,56 +134,66 @@ router.post('/download-clip', async (req, res) => {
       const req = https.request(options, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(JSON.parse(data)));
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch(e) { reject(new Error('Invalid API response')); }
+        });
       });
       req.on('error', reject);
+      req.setTimeout(15000, () => { req.destroy(); reject(new Error('API timeout')); });
       req.end();
     });
 
-    // Find best mp4 format
+    console.log('RapidAPI status:', apiResponse.status);
+    console.log('Formats count:', (apiResponse.formats || []).length);
+
     const formats = apiResponse.formats || [];
-    const mp4Format = formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none') ||
-                      formats.find(f => f.ext === 'mp4') ||
-                      formats[0];
+    
+    // Best format: mp4 with video, 720p preferred
+    const mp4Format = 
+      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none' && f.height === 720) ||
+      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none' && f.height === 480) ||
+      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none') ||
+      formats.find(f => f.ext === 'mp4') ||
+      formats[0];
 
     if (!mp4Format || !mp4Format.url) {
-      return res.status(500).json({ error: 'Download URL nahi mila' });
+      console.error('API response:', JSON.stringify(apiResponse).substring(0, 500));
+      return res.status(500).json({ error: 'No download URL found from API' });
     }
 
-    const downloadUrl = mp4Format.url;
+    console.log('Downloading format:', mp4Format.ext, mp4Format.height, 'p');
+    console.log('Download URL:', mp4Format.url.substring(0, 80));
 
-    // Download video file
-await new Promise((resolve, reject) => {
-  const file = fs.createWriteStream(rawFile);
-  const request = https.get(downloadUrl, (response) => {
-    if (response.statusCode === 302 || response.statusCode === 301) {
-      https.get(response.headers.location, (redirectResponse) => {
-        redirectResponse.pipe(file);
-        file.on('finish', () => { file.close(); resolve(); });
-        file.on('error', reject);
-      }).on('error', reject);
-    } else {
-      response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-      file.on('error', reject);
+    // Download with full redirect support
+    await downloadFile(mp4Format.url, rawFile);
+
+    // Verify file size
+    const stats = fs.statSync(rawFile);
+    console.log('Downloaded file size:', stats.size, 'bytes');
+    if (stats.size < 10000) {
+      throw new Error(`Downloaded file too small: ${stats.size} bytes — likely corrupt`);
     }
-  });
-  request.on('error', (err) => {
-    fs.unlink(rawFile, () => {});
-    reject(err);
-  });
-});
 
     // Cut clip with FFmpeg
-    const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -vf scale=720:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y`;
+    const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 28 -c:a aac -b:a 128k -vf scale=720:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
 
     await new Promise((resolve, reject) => {
-      exec(ffmpegCmd, { timeout: 60000 }, (err, stdout, stderr) => {
+      exec(ffmpegCmd, { timeout: 120000 }, (err, stdout, stderr) => {
         fs.unlink(rawFile, () => {});
-        if (err) reject(new Error(stderr));
-        else resolve();
+        if (err) {
+          console.error('FFmpeg error:', stderr);
+          reject(new Error(stderr || err.message));
+        } else {
+          resolve();
+        }
       });
     });
+
+    // Verify clip was created
+    if (!fs.existsSync(clipFile)) {
+      throw new Error('FFmpeg did not create output file');
+    }
 
     // Send clip
     res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp4"`);
@@ -153,9 +205,11 @@ await new Promise((resolve, reject) => {
 
   } catch (err) {
     console.error('Download error:', err.message);
-    res.status(500).json({ error: 'Clip download fail hua', details: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Clip download failed', details: err.message });
+    }
   }
 });
 
-module.exports = router;
+module.exports = router;er;
 module.exports = router;
