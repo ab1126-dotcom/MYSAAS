@@ -150,13 +150,13 @@ router.post('/download-clip', async (req, res) => {
     const formats = apiResponse.formats || [];
     
     // Best format: mp4 with video, 720p preferred
-    const mp4Format = 
-      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none' && f.height === 720) ||
-      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none' && f.height === 480) ||
-      formats.find(f => f.ext === 'mp4' && f.vcodec !== 'none') ||
-      formats.find(f => f.ext === 'mp4') ||
-      formats[0];
-
+   const mp4Format =
+  formats.find(f => f.url && f.vcodec !== 'none' && f.height === 720) ||
+  formats.find(f => f.url && f.vcodec !== 'none' && f.height === 480) ||
+  formats.find(f => f.url && f.vcodec !== 'none') ||
+  formats.find(f => f.url) ||
+  formats[0];
+console.log('Selected format:', JSON.stringify(mp4Format));
     if (!mp4Format || !mp4Format.url) {
       console.error('API response:', JSON.stringify(apiResponse).substring(0, 500));
       return res.status(500).json({ error: 'No download URL found from API' });
