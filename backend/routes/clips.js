@@ -148,7 +148,7 @@ router.post('/download-clip', async (req, res) => {
     console.log('Formats count:', (apiResponse.formats || []).length);
 
     const formats = apiResponse.formats || [];
-    
+    console.log('Adaptive formats count:', (apiResponse.adaptiveFormats || []).length);
     // Best format: mp4 with video, 720p preferred
    const mp4Format =
   formats.find(f => f.url && f.vcodec !== 'none' && f.height === 720) ||
