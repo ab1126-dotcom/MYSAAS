@@ -183,16 +183,16 @@ console.log('Audio format:', audioFormat?.mimeType);
     }
 
     // Cut clip with FFmpeg
-   const audioFile = audioFormat ? path.join(TMP_DIR, `${id}_audio.webm`) : null;
-if (audioFormat) await downloadFile(audioFormat.url, audioFile);
+   
+
 const ffmpegCmd = audioFormat
-  ? `ffmpeg -ss ${start} -i "${rawFile}" -ss ${start} -i "${audioFile}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
-  : `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
+  ? `ffmpeg -ss ${start} -i "${videoFormat.url}" -ss ${start} -i "${audioFormat.url}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
+  : `ffmpeg -ss ${start} -i "${videoFormat.url}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
 
     await new Promise((resolve, reject) => {
       exec(ffmpegCmd, { timeout: 120000 }, (err, stdout, stderr) => {
-        fs.unlink(rawFile, () => {});
-        if (audioFile) fs.unlink(audioFile, () => {});
+        
+       
         if (err) {
           console.error('FFmpeg error:', stderr);
           reject(new Error(stderr || err.message));
