@@ -147,27 +147,34 @@ router.post('/download-clip', async (req, res) => {
     console.log('RapidAPI status:', apiResponse.status);
     console.log('Formats count:', (apiResponse.formats || []).length);
 
-    const formats = apiResponse.formats || [];
-    console.log('Adaptive formats count:', (apiResponse.adaptiveFormats || []).length);
-    // Best format: mp4 with video, 720p preferred
-   const mp4Format =
-  formats.find(f => f.url && f.vcodec !== 'none' && f.height === 720) ||
-  formats.find(f => f.url && f.vcodec !== 'none' && f.height === 480) ||
-  formats.find(f => f.url && f.vcodec !== 'none') ||
+    const adaptiveFormats = apiResponse.adaptiveFormats || [];
+
+// Best video: 1080p/4K from adaptiveFormats
+const videoFormat =
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 2160) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 1440) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 1080) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 720) ||
   formats.find(f => f.url) ||
   formats[0];
-console.log('Selected format:', JSON.stringify(mp4Format));
-    if (!mp4Format || !mp4Format.url) {
+
+// Best audio from adaptiveFormats
+const audioFormat =
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio') && f.audioQuality === 'AUDIO_QUALITY_MEDIUM') ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio')) ||
+  null;
+
+console.log('Video format:', videoFormat?.height, 'p');
+console.log('Audio format:', audioFormat?.mimeType);
+   if (!videoFormat || !videoFormat.url) {
       console.error('API response:', JSON.stringify(apiResponse).substring(0, 500));
       return res.status(500).json({ error: 'No download URL found from API' });
     }
 
-    console.log('Downloading format:', mp4Format.ext, mp4Format.height, 'p');
-    console.log('Download URL:', mp4Format.url.substring(0, 80));
-
+   console.log('Downloading format:', videoFormat?.height, 'p');
+    console.log('Download URL:', videoFormat.url.substring(0, 80));
     // Download with full redirect support
-    await downloadFile(mp4Format.url, rawFile);
-
+   await downloadFile(videoFormat.url, rawFile);
     // Verify file size
     const stats = fs.statSync(rawFile);
     console.log('Downloaded file size:', stats.size, 'bytes');
@@ -176,11 +183,16 @@ console.log('Selected format:', JSON.stringify(mp4Format));
     }
 
     // Cut clip with FFmpeg
-    const ffmpegCmd = `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
+   const audioFile = audioFormat ? path.join(TMP_DIR, `${id}_audio.webm`) : null;
+if (audioFormat) await downloadFile(audioFormat.url, audioFile);
+const ffmpegCmd = audioFormat
+  ? `ffmpeg -ss ${start} -i "${rawFile}" -ss ${start} -i "${audioFile}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
+  : `ffmpeg -ss ${start} -i "${rawFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
 
     await new Promise((resolve, reject) => {
       exec(ffmpegCmd, { timeout: 120000 }, (err, stdout, stderr) => {
         fs.unlink(rawFile, () => {});
+        if (audioFile) fs.unlink(audioFile, () => {});
         if (err) {
           console.error('FFmpeg error:', stderr);
           reject(new Error(stderr || err.message));
