@@ -174,13 +174,7 @@ console.log('Audio format:', audioFormat?.mimeType);
    console.log('Downloading format:', videoFormat?.height, 'p');
     console.log('Download URL:', videoFormat.url.substring(0, 80));
     // Download with full redirect support
-   await downloadFile(videoFormat.url, rawFile);
-    // Verify file size
-    const stats = fs.statSync(rawFile);
-    console.log('Downloaded file size:', stats.size, 'bytes');
-    if (stats.size < 10000) {
-      throw new Error(`Downloaded file too small: ${stats.size} bytes — likely corrupt`);
-    }
+   
 
     // Cut clip with FFmpeg
    
