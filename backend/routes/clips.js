@@ -151,12 +151,11 @@ router.post('/download-clip', async (req, res) => {
 
 // Best video: 1080p/4K from adaptiveFormats
 const videoFormat =
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 2160) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 1440) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 1080) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video') && f.height === 720) ||
-  formats.find(f => f.url) ||
-  formats[0];
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480) ||
+  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')) ||
+  adaptiveFormats[0];
 
 // Best audio from adaptiveFormats
 const audioFormat =
