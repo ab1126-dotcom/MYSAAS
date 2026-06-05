@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const [expandedClip, setExpandedClip] = useState(null);
   const [clipDetails, setClipDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
-
+const [downloadingClip, setDownloadingClip] = useState(null);
   const paid = isPaidUser();
 
   useEffect(() => {
@@ -366,11 +366,20 @@ export default function DashboardPage() {
                           {seoData ? 'SEO Reload' : 'SEO Generate'}
                         </button>
                         <button
-                          onClick={() => downloadClip(result.videoData.url, clip.startTime, clip.endTime, clip.title)}
-                          className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
-                        >
-                          ⬇️ Download Clip
-                        </button>
+  onClick={async () => {
+    setDownloadingClip(clip.id);
+    await downloadClip(result.videoData.url, clip.startTime, clip.endTime, clip.title);
+    setDownloadingClip(null);
+  }}
+  disabled={downloadingClip === clip.id}
+  className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
+>
+  {downloadingClip === clip.id ? (
+    <><Loader2 size={13} className="animate-spin" /> Downloading...</>
+  ) : (
+    <>⬇️ Download Clip</>
+  )}
+</button>
                         {(hooksData || seoData) && (
                           <button 
                             onClick={() => setExpandedClip(isExpanded ? null : clip.id)}
