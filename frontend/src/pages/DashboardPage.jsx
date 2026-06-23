@@ -6,7 +6,7 @@ import {
   TrendingUp, Copy, ChevronDown, ChevronUp, Tag, 
   AlertCircle, Crown, Loader2, Play, ExternalLink
 } from 'lucide-react';
-import { analyzeVideo, generateHooks, generateSEO, getUsage, isPaidUser, downloadClip } from '../utils/api';
+import { analyzeVideo, generateHooks, generateSEO, getUsage, isPaidUser, downloadClip, generateTitleAndDescription } from '../utils/api';
 
 export default function DashboardPage() {
   const [searchParams] = useSearchParams();
@@ -21,7 +21,9 @@ export default function DashboardPage() {
   const [expandedClip, setExpandedClip] = useState(null);
   const [clipDetails, setClipDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
-const [downloadingClip, setDownloadingClip] = useState(null);
+  const [downloadingClip, setDownloadingClip] = useState(null);
+  const [titleData, setTitleData] = useState(null);
+  const [loadingTitle, setLoadingTitle] = useState(false);
   const paid = isPaidUser();
 
   useEffect(() => {
@@ -48,6 +50,7 @@ const [downloadingClip, setDownloadingClip] = useState(null);
     setResult(null);
     setClipDetails({});
     setExpandedClip(null);
+    setTitleData(null);
 
     try {
       setLoadingStep('Video details fetch ho rahe hain...');
@@ -65,7 +68,7 @@ const [downloadingClip, setDownloadingClip] = useState(null);
       if (err.upgradeRequired) {
         setError({ type: 'upgrade', message: err.message || JSON.stringify(err) });
       } else {
-       setError({ type: 'error', message: err.message || JSON.stringify(err) });
+        setError({ type: 'error', message: err.message || JSON.stringify(err) });
         toast.error(err.message);
       }
     } finally {
@@ -78,7 +81,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
     if (!result) return;
     const key = `hooks_${clip.id}`;
     setLoadingDetails(prev => ({ ...prev, [key]: true }));
-    
     try {
       const data = await generateHooks(clip, result.videoData.title);
       setClipDetails(prev => ({ ...prev, [key]: data }));
@@ -94,7 +96,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
     if (!result) return;
     const key = `seo_${clip.id}`;
     setLoadingDetails(prev => ({ ...prev, [key]: true }));
-    
     try {
       const data = await generateSEO(result.videoData, clip);
       setClipDetails(prev => ({ ...prev, [key]: data }));
@@ -103,6 +104,20 @@ const [downloadingClip, setDownloadingClip] = useState(null);
       toast.error('SEO generation failed: ' + err.message);
     } finally {
       setLoadingDetails(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleGenerateTitle = async () => {
+    if (!result) return;
+    setLoadingTitle(true);
+    try {
+      const data = await generateTitleAndDescription(result.videoData);
+      setTitleData(data);
+      toast.success('AI Titles ready hain! ✨');
+    } catch (err) {
+      toast.error('Title generation failed: ' + err.message);
+    } finally {
+      setLoadingTitle(false);
     }
   };
 
@@ -273,6 +288,59 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                 <span className="text-white/40 text-sm italic">"{result.analysis.summary}"</span>
               )}
             </div>
+
+            {/* AI Title Generator - Gemma 4 */}
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-display font-bold text-white flex items-center gap-2">
+                  ✨ AI Title & Description Generator
+                  <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/30">
+                    Powered by Gemma 4
+                  </span>
+                </h4>
+                <button
+                  onClick={handleGenerateTitle}
+                  disabled={loadingTitle}
+                  className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
+                >
+                  {loadingTitle ? <><Loader2 size={13} className="animate-spin" /> Generating...</> : <>✨ Generate Titles</>}
+                </button>
+              </div>
+
+              {titleData && (
+                <div className="space-y-3">
+                  <p className="text-white/40 text-xs uppercase tracking-wider">5 AI Generated Titles</p>
+                  {titleData.titles?.map((t, i) => (
+                    <div key={i}
+                      className="flex items-center gap-3 glass-card p-3 cursor-pointer group hover:border-purple-500/20"
+                      onClick={() => copyToClipboard(t.title, 'Title copied!')}>
+                      <span className="text-purple-400 font-bold text-sm w-8">{t.score}</span>
+                      <span className="text-white/80 text-sm flex-1">{t.title}</span>
+                      <Copy size={12} className="text-white/20 group-hover:text-white/50 transition-colors" />
+                    </div>
+                  ))}
+                  {titleData.description && (
+                    <div className="glass-card p-4 mt-3 cursor-pointer group hover:border-purple-500/20"
+                      onClick={() => copyToClipboard(titleData.description, 'Description copied!')}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-white/40 text-xs uppercase tracking-wider">SEO Description</p>
+                        <Copy size={12} className="text-white/20 group-hover:text-white/50 transition-colors" />
+                      </div>
+                      <p className="text-white/70 text-sm">{titleData.description}</p>
+                    </div>
+                  )}
+                  {titleData.keywords && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {titleData.keywords.map((kw, i) => (
+                        <span key={i} className="text-xs bg-purple-500/10 text-purple-400 px-2 py-1 rounded-lg border border-purple-500/20">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Clips */}
@@ -293,7 +361,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
 
                 return (
                   <div key={clip.id} className={`glass-card overflow-hidden ${isBest ? 'border-brand-500/40 bg-brand-500/3' : ''}`}>
-                    {/* Clip Header */}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-4">
@@ -337,7 +404,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                         </div>
                       </div>
 
-                      {/* Quick Hook Preview */}
                       {clip.suggestedHook && (
                         <div className="mt-3 flex items-start gap-2 bg-dark-700 rounded-xl p-3 group cursor-pointer"
                              onClick={() => copyToClipboard(clip.suggestedHook, 'Hook copied!')}>
@@ -347,7 +413,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                         </div>
                       )}
 
-                      {/* Action Buttons */}
                       <div className="flex flex-wrap gap-2 mt-4">
                         <button 
                           onClick={() => handleGetHooks(clip)}
@@ -366,20 +431,20 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                           {seoData ? 'SEO Reload' : 'SEO Generate'}
                         </button>
                         <button
-  onClick={async () => {
-    setDownloadingClip(clip.id);
-    await downloadClip(result.videoData.url, clip.startTime, clip.endTime, clip.title);
-    setDownloadingClip(null);
-  }}
-  disabled={downloadingClip === clip.id}
-  className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
->
-  {downloadingClip === clip.id ? (
-    <><Loader2 size={13} className="animate-spin" /> Downloading...</>
-  ) : (
-    <>⬇️ Download Clip</>
-  )}
-</button>
+                          onClick={async () => {
+                            setDownloadingClip(clip.id);
+                            await downloadClip(result.videoData.url, clip.startTime, clip.endTime, clip.title);
+                            setDownloadingClip(null);
+                          }}
+                          disabled={downloadingClip === clip.id}
+                          className="btn-secondary text-sm py-2 px-4 flex items-center gap-2"
+                        >
+                          {downloadingClip === clip.id ? (
+                            <><Loader2 size={13} className="animate-spin" /> Downloading...</>
+                          ) : (
+                            <>⬇️ Download Clip</>
+                          )}
+                        </button>
                         {(hooksData || seoData) && (
                           <button 
                             onClick={() => setExpandedClip(isExpanded ? null : clip.id)}
@@ -392,11 +457,8 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                       </div>
                     </div>
 
-                    {/* Expanded Details */}
                     {isExpanded && (
                       <div className="border-t border-white/5 p-5 space-y-6 bg-dark-800/50">
-                        
-                        {/* Hooks Section */}
                         {hooksData?.hooks && (
                           <div>
                             <h4 className="font-display font-bold text-white mb-3 flex items-center gap-2">
@@ -433,7 +495,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                           </div>
                         )}
 
-                        {/* SEO Section */}
                         {seoData?.seo && (
                           <div>
                             <h4 className="font-display font-bold text-white mb-3 flex items-center gap-2">
@@ -443,8 +504,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                                 Score: {seoData.seo.seoScore}/100
                               </span>
                             </h4>
-
-                            {/* Titles */}
                             <div className="mb-4">
                               <p className="text-white/40 text-xs uppercase tracking-wider mb-2">Optimized Titles</p>
                               <div className="space-y-2">
@@ -458,8 +517,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                                 ))}
                               </div>
                             </div>
-
-                            {/* Hashtags */}
                             {seoData.seo.hashtags && (
                               <div className="mb-4">
                                 <p className="text-white/40 text-xs uppercase tracking-wider mb-2">Hashtags</p>
@@ -473,9 +530,7 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                                       <div className="flex flex-wrap gap-1 cursor-pointer group"
                                            onClick={() => copyToClipboard(tags.join(' '), 'Hashtags copied!')}>
                                         {tags.map((tag, i) => (
-                                          <span key={i} className="text-xs bg-dark-600 text-white/60 px-2 py-1 rounded-lg">
-                                            {tag}
-                                          </span>
+                                          <span key={i} className="text-xs bg-dark-600 text-white/60 px-2 py-1 rounded-lg">{tag}</span>
                                         ))}
                                         <Copy size={12} className="text-white/20 group-hover:text-white/50 mt-1 transition-colors" />
                                       </div>
@@ -484,8 +539,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
                                 </div>
                               </div>
                             )}
-
-                            {/* Best Posting Time */}
                             {seoData.seo.bestPostingTime && (
                               <div className="glass-card p-3 flex items-center gap-3">
                                 <Clock size={14} className="text-green-400" />
@@ -503,7 +556,6 @@ const [downloadingClip, setDownloadingClip] = useState(null);
             </div>
           </div>
 
-          {/* Upgrade Prompt */}
           {!paid && (
             <div className="glass-card p-6 text-center border-yellow-500/20 bg-yellow-500/3">
               <Crown size={32} className="text-yellow-400 mx-auto mb-3" />
@@ -523,3 +575,4 @@ const [downloadingClip, setDownloadingClip] = useState(null);
     </div>
   );
 }
+
