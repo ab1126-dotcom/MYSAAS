@@ -226,10 +226,55 @@ Respond ONLY in this JSON format:
   
   return JSON.parse(jsonMatch[0]);
 }
+// Generate Title & Description using Gemma 4 (Google)
+async function generateTitleAndDescription(videoData) {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `You are a YouTube SEO expert. Based on this video info, generate 5 catchy titles and 1 SEO-optimized description.
 
+Video Title: ${videoData.title}
+Channel: ${videoData.channelTitle}
+Views: ${videoData.viewCount}
+Description: ${videoData.description?.substring(0, 300)}
+
+Respond ONLY in this JSON format:
+{
+  "titles": [
+    {"title": "Title 1", "score": 95},
+    {"title": "Title 2", "score": 90},
+    {"title": "Title 3", "score": 85},
+    {"title": "Title 4", "score": 80},
+    {"title": "Title 5", "score": 75}
+  ],
+  "description": "Full SEO optimized description here with keywords...",
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "bestTitleIndex": 0
+}`
+          }]
+        }]
+      })
+    }
+  );
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemma 4 response error');
+  
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Gemma 4 parse error');
+  
+  return JSON.parse(jsonMatch[0]);
+}
 module.exports = {
   findViralClips,
   generateHooks,
   generateSEO,
-  analyzeCommentsForNextVideo
+  analyzeCommentsForNextVideo,
+generateTitleAndDescription
 };
