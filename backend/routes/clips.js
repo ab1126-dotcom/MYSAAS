@@ -215,6 +215,20 @@ const ffmpegCmd = audioFormat
     }
   }
 });
-
+// POST /api/clips/generate-title
+router.post('/generate-title', async (req, res) => {
+  try {
+    const { videoData } = req.body;
+    if (!videoData) {
+      return res.status(400).json({ error: 'videoData required' });
+    }
+    const { generateTitleAndDescription } = require('../services/aiService');
+    const result = await generateTitleAndDescription(videoData);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('Title generation error:', error.message);
+    res.status(500).json({ error: 'Title generation failed', message: error.message });
+  }
+});
 module.exports = router;
 
