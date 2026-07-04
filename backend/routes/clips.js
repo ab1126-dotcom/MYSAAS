@@ -107,7 +107,8 @@ router.post('/download-clip', async (req, res) => {
   const duration = end - start;
 
   const id = uuidv4();
-  const rawFile = path.join(TMP_DIR, `${id}_raw.mp4`);
+  const rawVideoFile = path.join(TMP_DIR, `${id}_rawvideo.mp4`);
+  const rawAudioFile = path.join(TMP_DIR, `${id}_rawaudio.mp4`);
   const clipFile = path.join(TMP_DIR, `${id}_clip.mp4`);
   const safeTitle = (title || 'clip').replace(/[^a-zA-Z0-9_-]/g, '_');
 
@@ -131,17 +132,17 @@ router.post('/download-clip', async (req, res) => {
           'x-rapidapi-key': rapidApiKey
         }
       };
-      const req = https.request(options, (res) => {
+      const apiReq = https.request(options, (apiRes) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        apiRes.on('data', chunk => data += chunk);
+        apiRes.on('end', () => {
           try { resolve(JSON.parse(data)); }
           catch(e) { reject(new Error('Invalid API response')); }
         });
       });
-      req.on('error', reject);
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error('API timeout')); });
-      req.end();
+      apiReq.on('error', reject);
+      apiReq.setTimeout(15000, () => { apiReq.destroy(); reject(new Error('API timeout')); });
+      apiReq.end();
     });
 
     console.log('RapidAPI status:', apiResponse.status);
@@ -149,45 +150,50 @@ router.post('/download-clip', async (req, res) => {
 
     const adaptiveFormats = apiResponse.adaptiveFormats || [];
 
-// Best video: 1080p/4K from adaptiveFormats
-const videoFormat =
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480) ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')) ||
-  adaptiveFormats[0];
+    // Best video: 1080p/4K from adaptiveFormats
+    const videoFormat =
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080) ||
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720) ||
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480) ||
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')) ||
+      adaptiveFormats[0];
 
-// Best audio from adaptiveFormats
-const audioFormat =
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio') && f.audioQuality === 'AUDIO_QUALITY_MEDIUM') ||
-  adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio')) ||
-  null;
+    // Best audio from adaptiveFormats
+    const audioFormat =
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio') && f.audioQuality === 'AUDIO_QUALITY_MEDIUM') ||
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio')) ||
+      null;
 
-console.log('Video format:', videoFormat?.height, 'p');
-console.log('Audio format:', audioFormat?.mimeType);
-   if (!videoFormat || !videoFormat.url) {
+    console.log('Video format:', videoFormat?.height, 'p');
+    console.log('Audio format:', audioFormat?.mimeType);
+
+    if (!videoFormat || !videoFormat.url) {
       console.error('API response:', JSON.stringify(apiResponse).substring(0, 500));
       return res.status(500).json({ error: 'No download URL found from API' });
     }
 
-   console.log('Downloading format:', videoFormat?.height, 'p');
+    console.log('Downloading format:', videoFormat?.height, 'p');
     console.log('Download URL:', videoFormat.url.substring(0, 80));
-    // Download with full redirect support
-   
 
-    // Cut clip with FFmpeg
-   
+    // IMPORTANT: ffmpeg can't fetch googlevideo.com URLs directly anymore (403),
+    // because it doesn't send browser-like headers and the URL is IP-locked.
+    // So we download video (and audio) to local disk first, then run ffmpeg on local files.
+    console.log('Downloading video to local disk...');
+    await downloadFile(videoFormat.url, rawVideoFile);
 
-const ffmpegCmd = audioFormat
-  ? `ffmpeg -ss ${start} -i "${videoFormat.url}" -ss ${start} -i "${audioFormat.url}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
-  : `ffmpeg -ss ${start} -i "${videoFormat.url}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
+    if (audioFormat && audioFormat.url) {
+      console.log('Downloading audio to local disk...');
+      await downloadFile(audioFormat.url, rawAudioFile);
+    }
+
+    const ffmpegCmd = (audioFormat && fs.existsSync(rawAudioFile))
+      ? `ffmpeg -ss ${start} -i "${rawVideoFile}" -ss ${start} -i "${rawAudioFile}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
+      : `ffmpeg -ss ${start} -i "${rawVideoFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
 
     await new Promise((resolve, reject) => {
-      exec(ffmpegCmd, { timeout: 120000 }, (err, stdout, stderr) => {
-        
-       
+      exec(ffmpegCmd, { timeout: 120000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
         if (err) {
-          console.error('FFmpeg error:', stderr);
+          console.error('FFmpeg error:', stderr || err.message);
           reject(new Error(stderr || err.message));
         } else {
           resolve();
@@ -205,16 +211,29 @@ const ffmpegCmd = audioFormat
     res.setHeader('Content-Type', 'video/mp4');
     const stream = fs.createReadStream(clipFile);
     stream.pipe(res);
-    stream.on('end', () => fs.unlink(clipFile, () => {}));
-    stream.on('error', () => fs.unlink(clipFile, () => {}));
+    stream.on('end', () => {
+      fs.unlink(clipFile, () => {});
+      fs.unlink(rawVideoFile, () => {});
+      fs.unlink(rawAudioFile, () => {});
+    });
+    stream.on('error', () => {
+      fs.unlink(clipFile, () => {});
+      fs.unlink(rawVideoFile, () => {});
+      fs.unlink(rawAudioFile, () => {});
+    });
 
   } catch (err) {
     console.error('Download error:', err.message);
+    // cleanup on failure too
+    fs.unlink(rawVideoFile, () => {});
+    fs.unlink(rawAudioFile, () => {});
+    fs.unlink(clipFile, () => {});
     if (!res.headersSent) {
       res.status(500).json({ error: 'Clip download failed', details: err.message });
     }
   }
 });
+
 // POST /api/clips/generate-title
 router.post('/generate-title', async (req, res) => {
   try {
@@ -230,5 +249,5 @@ router.post('/generate-title', async (req, res) => {
     res.status(500).json({ error: 'Title generation failed', message: error.message });
   }
 });
-module.exports = router;
 
+module.exports = router;
