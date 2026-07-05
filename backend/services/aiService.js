@@ -229,7 +229,7 @@ Respond ONLY in this JSON format:
 // Generate Title & Description using Gemma 4 (Google)
 async function generateTitleAndDescription(videoData) {
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -263,12 +263,17 @@ Respond ONLY in this JSON format:
   );
 
   const data = await response.json();
+
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemma 4 response error');
-  
+  if (!text) {
+    console.error('Gemma 4 raw response:', JSON.stringify(data));
+    const apiErrorMsg = data?.error?.message;
+    throw new Error(apiErrorMsg ? `Gemma 4 error: ${apiErrorMsg}` : 'Gemma 4 response error');
+  }
+
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Gemma 4 parse error');
-  
+
   return JSON.parse(jsonMatch[0]);
 }
 module.exports = {
