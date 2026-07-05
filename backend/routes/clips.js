@@ -13,45 +13,91 @@ if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
-// Helper: download with full redirect support
-function downloadFile(url, destPath, maxRedirects = 10) {
+// Total time we allow for a single file download before giving up (ms)
+const DOWNLOAD_HARD_TIMEOUT = 90000; // 90 seconds
+
+// Helper: download with full redirect support + hard total timeout + progress logging
+function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
   return new Promise((resolve, reject) => {
     if (maxRedirects === 0) return reject(new Error('Too many redirects'));
 
     const lib = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(destPath);
 
+    let settled = false;
+    let downloadedBytes = 0;
+    let totalBytes = 0;
+    let lastLogTime = Date.now();
+
+    // Hard overall timeout - fires regardless of whether data is trickling in
+    const hardTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      request.destroy();
+      file.close();
+      fs.unlink(destPath, () => {});
+      reject(new Error(`${label} download exceeded ${DOWNLOAD_HARD_TIMEOUT / 1000}s (likely throttled by source server)`));
+    }, DOWNLOAD_HARD_TIMEOUT);
+
+    const cleanupAndSettle = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hardTimeout);
+      fn(arg);
+    };
+
     const request = lib.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.youtube.com/',
+        'Origin': 'https://www.youtube.com',
+        'Connection': 'keep-alive',
       }
     }, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        clearTimeout(hardTimeout);
         file.close();
         fs.unlink(destPath, () => {});
-        return downloadFile(response.headers.location, destPath, maxRedirects - 1)
+        settled = true;
+        return downloadFile(response.headers.location, destPath, label, maxRedirects - 1)
           .then(resolve).catch(reject);
       }
 
       if (response.statusCode !== 200) {
         file.close();
         fs.unlink(destPath, () => {});
-        return reject(new Error(`HTTP ${response.statusCode}`));
+        return cleanupAndSettle(reject, new Error(`HTTP ${response.statusCode}`));
       }
 
+      totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+      console.log(`${label}: starting download, size ~${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+
+      response.on('data', (chunk) => {
+        downloadedBytes += chunk.length;
+        const now = Date.now();
+        if (now - lastLogTime > 5000) { // log progress every 5s
+          const pct = totalBytes ? ((downloadedBytes / totalBytes) * 100).toFixed(1) : '?';
+          console.log(`${label}: ${(downloadedBytes / 1024 / 1024).toFixed(1)} MB downloaded (${pct}%)`);
+          lastLogTime = now;
+        }
+      });
+
       response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-      file.on('error', (err) => { fs.unlink(destPath, () => {}); reject(err); });
+      file.on('finish', () => {
+        file.close();
+        cleanupAndSettle(resolve);
+      });
+      file.on('error', (err) => {
+        fs.unlink(destPath, () => {});
+        cleanupAndSettle(reject, err);
+      });
     });
 
     request.on('error', (err) => {
       fs.unlink(destPath, () => {});
-      reject(err);
-    });
-
-    request.setTimeout(60000, () => {
-      request.destroy();
-      reject(new Error('Download timeout'));
+      cleanupAndSettle(reject, err);
     });
   });
 }
@@ -150,13 +196,23 @@ router.post('/download-clip', async (req, res) => {
 
     const adaptiveFormats = apiResponse.adaptiveFormats || [];
 
-    // Best video: 1080p/4K from adaptiveFormats
-    const videoFormat =
-      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080) ||
-      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720) ||
-      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480) ||
-      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')) ||
-      adaptiveFormats[0];
+    // Ordered list of video quality candidates - we'll try highest first,
+    // and fall back to a lower quality if the higher one times out/throttles.
+    const videoCandidates = [
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080),
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720),
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480),
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 360),
+      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')),
+    ].filter(Boolean);
+
+    // Dedupe by url in case multiple finds matched the same format
+    const seen = new Set();
+    const videoFormats = videoCandidates.filter(f => {
+      if (seen.has(f.url)) return false;
+      seen.add(f.url);
+      return true;
+    });
 
     // Best audio from adaptiveFormats
     const audioFormat =
@@ -164,26 +220,50 @@ router.post('/download-clip', async (req, res) => {
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio')) ||
       null;
 
-    console.log('Video format:', videoFormat?.height, 'p');
-    console.log('Audio format:', audioFormat?.mimeType);
-
-    if (!videoFormat || !videoFormat.url) {
+    if (videoFormats.length === 0) {
       console.error('API response:', JSON.stringify(apiResponse).substring(0, 500));
       return res.status(500).json({ error: 'No download URL found from API' });
     }
 
-    console.log('Downloading format:', videoFormat?.height, 'p');
-    console.log('Download URL:', videoFormat.url.substring(0, 80));
+    console.log('Audio format:', audioFormat?.mimeType);
+    console.log('Video quality candidates:', videoFormats.map(f => f.height + 'p').join(', '));
 
     // IMPORTANT: ffmpeg can't fetch googlevideo.com URLs directly anymore (403),
     // because it doesn't send browser-like headers and the URL is IP-locked.
     // So we download video (and audio) to local disk first, then run ffmpeg on local files.
-    console.log('Downloading video to local disk...');
-    await downloadFile(videoFormat.url, rawVideoFile);
+    //
+    // googlevideo.com throttles bandwidth hard for datacenter/server IPs (like Railway),
+    // so a large 1080p file can take forever. We try each quality in order and fall back
+    // to a smaller one if the download times out.
+    let downloadedVideoFormat = null;
+    let lastDownloadError = null;
+
+    for (const candidate of videoFormats) {
+      try {
+        console.log(`Attempting download at ${candidate.height}p...`);
+        await downloadFile(candidate.url, rawVideoFile, `video-${candidate.height}p`);
+        downloadedVideoFormat = candidate;
+        break; // success, stop trying lower qualities
+      } catch (err) {
+        console.warn(`${candidate.height}p download failed/timed out: ${err.message}`);
+        lastDownloadError = err;
+        fs.unlink(rawVideoFile, () => {}); // clean up partial file before next attempt
+      }
+    }
+
+    if (!downloadedVideoFormat) {
+      throw new Error(
+        `Video download failed at all qualities (likely throttled by YouTube CDN for this server). Last error: ${lastDownloadError?.message}`
+      );
+    }
 
     if (audioFormat && audioFormat.url) {
-      console.log('Downloading audio to local disk...');
-      await downloadFile(audioFormat.url, rawAudioFile);
+      try {
+        console.log('Downloading audio to local disk...');
+        await downloadFile(audioFormat.url, rawAudioFile, 'audio');
+      } catch (err) {
+        console.warn('Audio download failed, continuing with video only:', err.message);
+      }
     }
 
     const ffmpegCmd = (audioFormat && fs.existsSync(rawAudioFile))
