@@ -1,7 +1,5 @@
 import axios from 'axios';
-
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
-
 // Get stored subscription status
 const getSubscription = () => localStorage.getItem('subscription') || 'free';
 const getUserId = () => {
@@ -12,7 +10,6 @@ const getUserId = () => {
   }
   return id;
 };
-
 // Create axios instance with default headers
 const api = axios.create({
   baseURL: BASE_URL,
@@ -21,7 +18,6 @@ const api = axios.create({
     'Content-Type': 'application/json',
   }
 });
-
 // Request interceptor - add auth headers
 api.interceptors.request.use((config) => {
   const subscription = getSubscription();
@@ -30,7 +26,6 @@ api.interceptors.request.use((config) => {
   config.headers['x-user-id'] = userId;
   return config;
 });
-
 // Response interceptor - handle errors
 api.interceptors.response.use(
   (response) => response.data,
@@ -48,27 +43,22 @@ api.interceptors.response.use(
     return Promise.reject(enhancedError);
   }
 );
-
 // API functions
 export const analyzeVideo = (url) => 
   api.post('/analyze', { url, isPaid: getSubscription() === 'paid' });
-
 export const getUsage = () => 
   api.get('/analyze/usage');
-
 export const generateHooks = (clipData, videoTitle) =>
   api.post('/clips/hooks', { clipData, videoTitle, isPaid: getSubscription() === 'paid' });
-
 export const generateSEO = (videoData, clipData) =>
   api.post('/clips/seo', { videoData, clipData, isPaid: getSubscription() === 'paid' });
-
+export const generateTitleAndDescription = (videoData) =>
+  api.post('/clips/generate-title', { videoData, isPaid: getSubscription() === 'paid' });
 export const analyzeComments = (url) =>
   api.post('/comments/analyze', { url, isPaid: getSubscription() === 'paid' });
-
 export const setSubscription = (plan) => {
   localStorage.setItem('subscription', plan);
 };
-
 export const isPaidUser = () => getSubscription() === 'paid';
 export const downloadClip = async (videoUrl, startTime, endTime, title) => {
   const response = await fetch(`${BASE_URL}/clips/download-clip`, {
