@@ -236,30 +236,39 @@ async function generateTitleAndDescription(videoData) {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `You are a YouTube SEO expert. Based on this video info, generate 5 catchy titles and 1 SEO-optimized description.
+            text: `You are a YouTube SEO expert. Based on this video's real info below, write 5 real, catchy, unique titles and one real SEO-optimized description. Do NOT copy any example, template, or placeholder text — every field must contain original content you generate specifically for this video.
 
 Video Title: ${videoData.title}
 Channel: ${videoData.channelTitle}
 Views: ${videoData.viewCount}
-Description: ${videoData.description?.substring(0, 300)}
-
-Respond ONLY with raw JSON. Do not include any explanation, reasoning, or markdown code fences. Do not think out loud. Your entire output must be exactly this JSON object and nothing else:
-{
-  "titles": [
-    {"title": "Title 1", "score": 95},
-    {"title": "Title 2", "score": 90},
-    {"title": "Title 3", "score": 85},
-    {"title": "Title 4", "score": 80},
-    {"title": "Title 5", "score": 75}
-  ],
-  "description": "Full SEO optimized description here with keywords...",
-  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-  "bestTitleIndex": 0
-}`
+Description: ${videoData.description?.substring(0, 300)}`
           }]
         }],
         generationConfig: {
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              titles: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    title: { type: "STRING" },
+                    score: { type: "NUMBER" }
+                  },
+                  required: ["title", "score"]
+                }
+              },
+              description: { type: "STRING" },
+              keywords: {
+                type: "ARRAY",
+                items: { type: "STRING" }
+              },
+              bestTitleIndex: { type: "NUMBER" }
+            },
+            required: ["titles", "description", "keywords", "bestTitleIndex"]
+          }
         }
       })
     }
@@ -274,21 +283,24 @@ Respond ONLY with raw JSON. Do not include any explanation, reasoning, or markdo
     throw new Error(apiErrorMsg ? `Gemma 4 error: ${apiErrorMsg}` : 'Gemma 4 response error');
   }
 
-  // Strip markdown code fences if present (```json ... ```)
   const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.error('Gemma 4 raw text that failed to match JSON:', text);
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (parseErr) {
+    console.error('Gemma 4 text that failed JSON.parse:', cleaned);
     throw new Error('Gemma 4 parse error');
   }
 
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch (parseErr) {
-    console.error('Gemma 4 text that failed JSON.parse:', jsonMatch[0]);
-    throw new Error('Gemma 4 parse error');
+  // Safety check: make sure it's not literally placeholder text like "..."
+  const firstTitle = parsed?.titles?.[0]?.title || '';
+  if (firstTitle.includes('...') || firstTitle.toLowerCase() === 'title 1') {
+    console.error('Gemma 4 returned placeholder-like content:', JSON.stringify(parsed));
+    throw new Error('Gemma 4 returned placeholder content instead of real titles');
   }
+
+  return parsed;
 }
 module.exports = {
   findViralClips,
