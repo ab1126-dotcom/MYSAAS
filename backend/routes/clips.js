@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { generateHooks, generateSEO } = require('../services/aiService');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
@@ -13,10 +13,67 @@ if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
-// Total time we allow for a single file download before giving up (ms)
-const DOWNLOAD_HARD_TIMEOUT = 90000; // 90 seconds
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const BROWSER_HEADERS = 'Referer: https://www.youtube.com/\r\nOrigin: https://www.youtube.com\r\n';
 
-// Helper: download with full redirect support + hard total timeout + progress logging
+// Total time we allow for a fallback full-file download before giving up (ms)
+const DOWNLOAD_HARD_TIMEOUT = 90000; // 90 seconds
+// Time we allow the fast direct-stream ffmpeg trim to run before giving up (ms)
+const DIRECT_STREAM_TIMEOUT = 45000; // 45 seconds
+
+// ---------------------------------------------------------------------------
+// PRIMARY METHOD: ask ffmpeg to read straight from the googlevideo URL and
+// only pull the bytes it actually needs for the requested time range (via
+// HTTP range requests done internally by ffmpeg's demuxer). This avoids
+// downloading the entire (often 300-600+ MB) source video just to cut out a
+// 10-30 second clip, which is what was previously causing multi-minute hangs.
+// ---------------------------------------------------------------------------
+function directStreamClip(videoUrl, audioUrl, start, duration, clipFile) {
+  return new Promise((resolve, reject) => {
+    const args = ['-y'];
+
+    // Video input, with fast (input-level) seek + browser-like headers
+    args.push('-user_agent', BROWSER_UA, '-headers', BROWSER_HEADERS, '-ss', String(start), '-i', videoUrl);
+
+    // Optional audio input
+    if (audioUrl) {
+      args.push('-user_agent', BROWSER_UA, '-headers', BROWSER_HEADERS, '-ss', String(start), '-i', audioUrl);
+    }
+
+    args.push('-t', String(duration));
+
+    if (audioUrl) {
+      args.push('-map', '0:v', '-map', '1:a');
+    } else {
+      args.push('-map', '0:v');
+    }
+
+    args.push(
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+      ...(audioUrl ? ['-c:a', 'aac', '-b:a', '128k'] : []),
+      '-vf', 'scale=1080:-2',
+      '-avoid_negative_ts', 'make_zero',
+      '-threads', '1',
+      clipFile
+    );
+
+    execFile('ffmpeg', args, { timeout: DIRECT_STREAM_TIMEOUT, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(stderr || err.message));
+      } else if (!fs.existsSync(clipFile) || fs.statSync(clipFile).size === 0) {
+        reject(new Error('ffmpeg produced no output (direct stream)'));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// FALLBACK METHOD: download the full file to disk first, then trim locally.
+// Slower and can fail on very large files over limited bandwidth, but kept as
+// a safety net in case direct streaming isn't supported for a given format.
+// ---------------------------------------------------------------------------
 function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
   return new Promise((resolve, reject) => {
     if (maxRedirects === 0) return reject(new Error('Too many redirects'));
@@ -29,14 +86,13 @@ function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
     let totalBytes = 0;
     let lastLogTime = Date.now();
 
-    // Hard overall timeout - fires regardless of whether data is trickling in
     const hardTimeout = setTimeout(() => {
       if (settled) return;
       settled = true;
       request.destroy();
       file.close();
       fs.unlink(destPath, () => {});
-      reject(new Error(`${label} download exceeded ${DOWNLOAD_HARD_TIMEOUT / 1000}s (likely throttled by source server)`));
+      reject(new Error(`${label} download exceeded ${DOWNLOAD_HARD_TIMEOUT / 1000}s`));
     }, DOWNLOAD_HARD_TIMEOUT);
 
     const cleanupAndSettle = (fn, arg) => {
@@ -48,7 +104,7 @@ function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
 
     const request = lib.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': BROWSER_UA,
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://www.youtube.com/',
@@ -72,12 +128,12 @@ function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
       }
 
       totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-      console.log(`${label}: starting download, size ~${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+      console.log(`${label}: starting fallback full download, size ~${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
 
       response.on('data', (chunk) => {
         downloadedBytes += chunk.length;
         const now = Date.now();
-        if (now - lastLogTime > 5000) { // log progress every 5s
+        if (now - lastLogTime > 5000) {
           const pct = totalBytes ? ((downloadedBytes / totalBytes) * 100).toFixed(1) : '?';
           console.log(`${label}: ${(downloadedBytes / 1024 / 1024).toFixed(1)} MB downloaded (${pct}%)`);
           lastLogTime = now;
@@ -85,19 +141,27 @@ function downloadFile(url, destPath, label = 'file', maxRedirects = 10) {
       });
 
       response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        cleanupAndSettle(resolve);
-      });
-      file.on('error', (err) => {
-        fs.unlink(destPath, () => {});
-        cleanupAndSettle(reject, err);
-      });
+      file.on('finish', () => { file.close(); cleanupAndSettle(resolve); });
+      file.on('error', (err) => { fs.unlink(destPath, () => {}); cleanupAndSettle(reject, err); });
     });
 
     request.on('error', (err) => {
       fs.unlink(destPath, () => {});
       cleanupAndSettle(reject, err);
+    });
+  });
+}
+
+function runFfmpegOnLocalFiles(rawVideoFile, rawAudioFile, start, duration, clipFile) {
+  const hasAudio = fs.existsSync(rawAudioFile);
+  const ffmpegCmd = hasAudio
+    ? `ffmpeg -ss ${start} -i "${rawVideoFile}" -ss ${start} -i "${rawAudioFile}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
+    : `ffmpeg -ss ${start} -i "${rawVideoFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
+
+  return new Promise((resolve, reject) => {
+    exec(ffmpegCmd, { timeout: 120000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve();
     });
   });
 }
@@ -165,7 +229,6 @@ router.post('/download-clip', async (req, res) => {
     }
     const videoId = videoIdMatch[1];
 
-    // Get download URL from RapidAPI
     const rapidApiKey = process.env.RAPIDAPI_KEY;
 
     const apiResponse = await new Promise((resolve, reject) => {
@@ -196,17 +259,13 @@ router.post('/download-clip', async (req, res) => {
 
     const adaptiveFormats = apiResponse.adaptiveFormats || [];
 
-    // Ordered list of video quality candidates - we'll try highest first,
-    // and fall back to a lower quality if the higher one times out/throttles.
     const videoCandidates = [
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 1080),
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 720),
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 480),
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4') && f.height === 360),
-      adaptiveFormats.find(f => f.url && f.mimeType?.includes('video/mp4')),
     ].filter(Boolean);
 
-    // Dedupe by url in case multiple finds matched the same format
     const seen = new Set();
     const videoFormats = videoCandidates.filter(f => {
       if (seen.has(f.url)) return false;
@@ -214,7 +273,6 @@ router.post('/download-clip', async (req, res) => {
       return true;
     });
 
-    // Best audio from adaptiveFormats
     const audioFormat =
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio') && f.audioQuality === 'AUDIO_QUALITY_MEDIUM') ||
       adaptiveFormats.find(f => f.url && f.mimeType?.includes('audio')) ||
@@ -228,65 +286,57 @@ router.post('/download-clip', async (req, res) => {
     console.log('Audio format:', audioFormat?.mimeType);
     console.log('Video quality candidates:', videoFormats.map(f => f.height + 'p').join(', '));
 
-    // IMPORTANT: ffmpeg can't fetch googlevideo.com URLs directly anymore (403),
-    // because it doesn't send browser-like headers and the URL is IP-locked.
-    // So we download video (and audio) to local disk first, then run ffmpeg on local files.
-    //
-    // googlevideo.com throttles bandwidth hard for datacenter/server IPs (like Railway),
-    // so a large 1080p file can take forever. We try each quality in order and fall back
-    // to a smaller one if the download times out.
-    let downloadedVideoFormat = null;
-    let lastDownloadError = null;
+    let clipReady = false;
+    let lastError = null;
 
+    // --- Attempt 1 (per quality): fast direct-stream trim, no full download ---
     for (const candidate of videoFormats) {
       try {
-        console.log(`Attempting download at ${candidate.height}p...`);
-        await downloadFile(candidate.url, rawVideoFile, `video-${candidate.height}p`);
-        downloadedVideoFormat = candidate;
-        break; // success, stop trying lower qualities
+        console.log(`Direct-stream attempt at ${candidate.height}p...`);
+        await directStreamClip(candidate.url, audioFormat?.url || null, start, duration, clipFile);
+        console.log(`Direct-stream succeeded at ${candidate.height}p`);
+        clipReady = true;
+        break;
       } catch (err) {
-        console.warn(`${candidate.height}p download failed/timed out: ${err.message}`);
-        lastDownloadError = err;
-        fs.unlink(rawVideoFile, () => {}); // clean up partial file before next attempt
+        console.warn(`Direct-stream failed at ${candidate.height}p: ${err.message}`);
+        lastError = err;
+        fs.unlink(clipFile, () => {});
       }
     }
 
-    if (!downloadedVideoFormat) {
-      throw new Error(
-        `Video download failed at all qualities (likely throttled by YouTube CDN for this server). Last error: ${lastDownloadError?.message}`
-      );
-    }
-
-    if (audioFormat && audioFormat.url) {
-      try {
-        console.log('Downloading audio to local disk...');
-        await downloadFile(audioFormat.url, rawAudioFile, 'audio');
-      } catch (err) {
-        console.warn('Audio download failed, continuing with video only:', err.message);
-      }
-    }
-
-    const ffmpegCmd = (audioFormat && fs.existsSync(rawAudioFile))
-      ? `ffmpeg -ss ${start} -i "${rawVideoFile}" -ss ${start} -i "${rawAudioFile}" -t ${duration} -map 0:v -map 1:a -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`
-      : `ffmpeg -ss ${start} -i "${rawVideoFile}" -t ${duration} -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k -vf scale=1080:-2 -avoid_negative_ts make_zero -threads 1 "${clipFile}" -y 2>&1`;
-
-    await new Promise((resolve, reject) => {
-      exec(ffmpegCmd, { timeout: 120000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
-        if (err) {
-          console.error('FFmpeg error:', stderr || err.message);
-          reject(new Error(stderr || err.message));
-        } else {
-          resolve();
+    // --- Attempt 2 (fallback): full download then trim locally ---
+    if (!clipReady) {
+      console.log('Falling back to full-file download method...');
+      for (const candidate of videoFormats) {
+        try {
+          console.log(`Fallback full download at ${candidate.height}p...`);
+          await downloadFile(candidate.url, rawVideoFile, `video-${candidate.height}p`);
+          if (audioFormat?.url) {
+            try {
+              await downloadFile(audioFormat.url, rawAudioFile, 'audio');
+            } catch (audioErr) {
+              console.warn('Audio fallback download failed, continuing video-only:', audioErr.message);
+            }
+          }
+          await runFfmpegOnLocalFiles(rawVideoFile, rawAudioFile, start, duration, clipFile);
+          if (fs.existsSync(clipFile)) {
+            clipReady = true;
+            break;
+          }
+        } catch (err) {
+          console.warn(`Fallback failed at ${candidate.height}p: ${err.message}`);
+          lastError = err;
+          fs.unlink(rawVideoFile, () => {});
+          fs.unlink(rawAudioFile, () => {});
+          fs.unlink(clipFile, () => {});
         }
-      });
-    });
-
-    // Verify clip was created
-    if (!fs.existsSync(clipFile)) {
-      throw new Error('FFmpeg did not create output file');
+      }
     }
 
-    // Send clip
+    if (!clipReady) {
+      throw new Error(`Clip could not be generated at any quality. Last error: ${lastError?.message}`);
+    }
+
     res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp4"`);
     res.setHeader('Content-Type', 'video/mp4');
     const stream = fs.createReadStream(clipFile);
@@ -304,7 +354,6 @@ router.post('/download-clip', async (req, res) => {
 
   } catch (err) {
     console.error('Download error:', err.message);
-    // cleanup on failure too
     fs.unlink(rawVideoFile, () => {});
     fs.unlink(rawAudioFile, () => {});
     fs.unlink(clipFile, () => {});
