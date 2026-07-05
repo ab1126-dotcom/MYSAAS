@@ -243,7 +243,7 @@ Channel: ${videoData.channelTitle}
 Views: ${videoData.viewCount}
 Description: ${videoData.description?.substring(0, 300)}
 
-Respond ONLY in this JSON format:
+Respond ONLY with raw JSON. Do not include any explanation, reasoning, or markdown code fences. Do not think out loud. Your entire output must be exactly this JSON object and nothing else:
 {
   "titles": [
     {"title": "Title 1", "score": 95},
@@ -257,7 +257,10 @@ Respond ONLY in this JSON format:
   "bestTitleIndex": 0
 }`
           }]
-        }]
+        }],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
       })
     }
   );
@@ -266,15 +269,26 @@ Respond ONLY in this JSON format:
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
-    console.error('Gemma 4 raw response:', JSON.stringify(data));
+    console.error('Gemma 4 raw response (no text):', JSON.stringify(data));
     const apiErrorMsg = data?.error?.message;
     throw new Error(apiErrorMsg ? `Gemma 4 error: ${apiErrorMsg}` : 'Gemma 4 response error');
   }
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Gemma 4 parse error');
+  // Strip markdown code fences if present (```json ... ```)
+  const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-  return JSON.parse(jsonMatch[0]);
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    console.error('Gemma 4 raw text that failed to match JSON:', text);
+    throw new Error('Gemma 4 parse error');
+  }
+
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (parseErr) {
+    console.error('Gemma 4 text that failed JSON.parse:', jsonMatch[0]);
+    throw new Error('Gemma 4 parse error');
+  }
 }
 module.exports = {
   findViralClips,
